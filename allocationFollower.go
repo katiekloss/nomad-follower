@@ -51,29 +51,6 @@ func NewAllocationFollower(nomad NomadConfig, logger Logger) (a *AllocationFollo
 	}, nil
 }
 
-// SetNodeID set the current Node's ID from the local Nomad agent.
-func (a *AllocationFollower) SetNodeID() error {
-	logContext := "AllocationFollower.SetNodeID"
-	var err error
-	var maxRetries = 3
-	for retryCount := 1; retryCount <= maxRetries; retryCount++ {
-		time.Sleep(time.Duration(retryCount) * time.Second)
-		// reset err after each retry -- but leave final error set for return
-		err = nil
-		var self *nomadApi.AgentSelf
-		self, err = a.Nomad.Client().Agent().Self()
-		if err != nil {
-			a.log.Debugf(logContext, "Unable to query Nomad self endpoint, retry %d of %d", retryCount, maxRetries)
-		} else {
-			a.NodeID = self.Stats["client"]["node_id"]
-			return nil
-		}
-	}
-
-	a.log.Error(logContext, "Failed to query Nomad self endpoint, exiting")
-	return err
-}
-
 // Start registers and de registers allocation followers
 func (a *AllocationFollower) Start(duration time.Duration, savePath string) <-chan string {
 	logContext := "AllocationFollower.Start"
@@ -85,15 +62,17 @@ func (a *AllocationFollower) Start(duration time.Duration, savePath string) <-ch
 
 		// handle first run special case items
 		a.Nomad.RenewToken()
-		err := a.SetNodeID()
-		if err != nil {
+		a.NodeID = os.Getenv("NOMAD_NODE_ID")
+
+		if len(a.NodeID) == 0 {
 			// cannot lookup allocations w/o node-id, hard fail
-			a.log.Errorf(logContext, "Could not fetch NodeID: %s", err)
+			a.log.Errorf(logContext, "NOMAD_NODE_ID is missing")
 			close(a.OutChan)
 			return
 		}
+
 		savePoint := a.restoreSavePoint(savePath)
-		err = a.collectAllocations(savePoint)
+		err := a.collectAllocations(savePoint)
 		if err != nil {
 			a.log.Debugf(
 				logContext,
