@@ -1,4 +1,4 @@
-module code.kat5.dev/katie/nomad_follower
+module code.kat5.dev/katie/nomad-follower
 
 go 1.25.3
 
