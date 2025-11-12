@@ -13,23 +13,23 @@ import (
 var SaveFormatVersion = 1
 
 type SavePoint struct {
-	NodeID string `json:"node_id"`
-	SaveFormatVersion int `json:"save_format_version"`
-	SavedAllocs map[string]SavedAlloc `json:"saved_allocs"`
+	NodeID            string                `json:"node_id"`
+	SaveFormatVersion int                   `json:"save_format_version"`
+	SavedAllocs       map[string]SavedAlloc `json:"saved_allocs"`
 }
 
 type SavedAlloc struct {
-	ID string `json:"alloc_id"`
+	ID         string               `json:"alloc_id"`
 	SavedTasks map[string]SavedTask `json:"saved_tasks"`
 }
 
 type SavedTask struct {
-	Key string `json:"key"`
+	Key           string           `json:"key"`
 	StdOutOffsets map[string]int64 `json:"stdout_offsets"`
 	StdErrOffsets map[string]int64 `json:"stderr_offsets"`
 }
 
-//AllocationFollower a container for the list of followed allocations
+// AllocationFollower a container for the list of followed allocations
 type AllocationFollower struct {
 	Allocations map[string]*FollowedAllocation
 	Nomad       NomadConfig
@@ -40,14 +40,14 @@ type AllocationFollower struct {
 	log         Logger
 }
 
-//NewAllocationFollower Creates a new allocation follower
+// NewAllocationFollower Creates a new allocation follower
 func NewAllocationFollower(nomad NomadConfig, logger Logger) (a *AllocationFollower, e error) {
 	return &AllocationFollower{
 		Allocations: make(map[string]*FollowedAllocation),
-		Nomad: nomad,
-		NodeID: "",
-		Quit: make(chan bool),
-		log: logger,
+		Nomad:       nomad,
+		NodeID:      "",
+		Quit:        make(chan bool),
+		log:         logger,
 	}, nil
 }
 
@@ -60,7 +60,8 @@ func (a *AllocationFollower) SetNodeID() error {
 		time.Sleep(time.Duration(retryCount) * time.Second)
 		// reset err after each retry -- but leave final error set for return
 		err = nil
-		self, err := a.Nomad.Client().Agent().Self()
+		var self *nomadApi.AgentSelf
+		self, err = a.Nomad.Client().Agent().Self()
 		if err != nil {
 			a.log.Debugf(logContext, "Unable to query Nomad self endpoint, retry %d of %d", retryCount, maxRetries)
 		} else {
@@ -68,12 +69,13 @@ func (a *AllocationFollower) SetNodeID() error {
 			return nil
 		}
 	}
+
 	a.log.Error(logContext, "Failed to query Nomad self endpoint, exiting")
 	return err
 }
 
-//Start registers and de registers allocation followers
-func (a *AllocationFollower) Start(duration time.Duration, savePath string) (<-chan string) {
+// Start registers and de registers allocation followers
+func (a *AllocationFollower) Start(duration time.Duration, savePath string) <-chan string {
 	logContext := "AllocationFollower.Start"
 	a.Ticker = time.NewTicker(duration)
 	a.OutChan = make(chan string)
@@ -128,7 +130,7 @@ func (a *AllocationFollower) Start(duration time.Duration, savePath string) (<-c
 	return a.OutChan
 }
 
-//Stop stops all followed allocations and exits
+// Stop stops all followed allocations and exits
 func (a *AllocationFollower) Stop() {
 	a.Quit <- true
 
