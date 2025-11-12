@@ -1,6 +1,6 @@
 module code.kat5.dev/katie/nomad_follower
 
-go 1.25.4
+go 1.25.3
 
 require (
 	github.com/dmwilcox/fuzzytime v0.0.0-20191010161914-05ea0010feac
