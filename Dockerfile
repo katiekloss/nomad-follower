@@ -1,13 +1,13 @@
-FROM golang:1.10.0-alpine3.7
+FROM golang:1.25-alpine AS build
 
-RUN apk add --update --no-cache git
+WORKDIR /app
+ADD *.go .
+ADD go.* .
 
-ADD . /go/src/github.com/adragoset/nomad_follower
+RUN go build
 
-RUN set -ex \
-    && go get github.com/kardianos/govendor \
-    && cd /go/src/github.com/adragoset/nomad_follower \
-    && govendor sync \
-    && go install
+FROM alpine:latest
+COPY --from=build /app/nomad-follower .
 
-CMD nomad_follower
+USER 1000
+CMD nomad-follower
