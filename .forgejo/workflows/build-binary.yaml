@@ -3,7 +3,7 @@ on:
   pull_request:
  
 jobs:
-  build:
+  build-binary:
     runs-on: nomad
     steps:
       - uses: actions/checkout@v4

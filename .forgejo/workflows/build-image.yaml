@@ -1,0 +1,10 @@
+on:
+  push:
+  pull_request:
+ 
+jobs:
+  build-image:
+    runs-on: nomad
+    steps:
+      - uses: actions/checkout@v4
+      - run: podman build .
