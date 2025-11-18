@@ -15,7 +15,7 @@ import (
 var INITIAL_OUTPUT_CAP = 10
 
 // JSON_DATETIME_FIELDS lists fields searched in a JSON log for a timestamp.
-var JSON_DATETIME_FIELDS = []string{"datetime", "timestamp", "time", "date"}
+var JSON_DATETIME_FIELDS = []string{"datetime", "timestamp", "time", "date", "@timestamp"}
 
 // MAX_TIMESTAMP_START_POS determines if a log timestamp signals a new multi-line log.
 var MAX_TIMESTAMP_START_POS = 4
