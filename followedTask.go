@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -25,22 +26,25 @@ var MULTILINE_BUF_CAP = 10
 // BACKOFF_DELAY rate-limits streaming logs of tasks that error (BACKOFF_DELAY << error-count) seconds
 var BACKOFF_DELAY = 8
 
+// log format that consists of a full ISO8601 timestamp, the pipe name, the letter F (?!), and then the line's contents
+var CONTAINER_LOGLINE_REGEXP = regexp.MustCompile(`(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:(?:[+-]\d\d:\d\d)|Z)?) (stdout|stderr) F (.*)`)
+
 // NomadLog annotates task log data with metadata from Nomad about the task
 // and allocation.  A timestamp is parsed out of the message body and string log
 // ouput is preserved under the 'message' field and JSON log output is nested
 // under the 'data' field.
 type NomadLog struct {
-	AllocId string `json:"alloc_id"`
-	JobName string `json:"job_name"`
-	NodeName string `json:"node_name"`
-	ServiceName string `json:"service_name"`
-	ServiceTags []string `json:"service_tags"`
+	AllocId       string            `json:"alloc_id"`
+	JobName       string            `json:"job_name"`
+	NodeName      string            `json:"node_name"`
+	ServiceName   string            `json:"service_name"`
+	ServiceTags   []string          `json:"service_tags"`
 	ServiceTagMap map[string]string `json:"service_tag_map"`
-	TaskName string `json:"task_name"`
+	TaskName      string            `json:"task_name"`
 	// these all set at log time
-	Timestamp string `json:"timestamp"`
-	Message string `json:"message"`
-	Data map[string]interface{} `json:"data"`
+	Timestamp string                 `json:"timestamp"`
+	Message   string                 `json:"message"`
+	Data      map[string]interface{} `json:"data"`
 }
 
 func (n *NomadLog) ToJSON() (string, error) {
@@ -51,7 +55,7 @@ func (n *NomadLog) ToJSON() (string, error) {
 	return string(result[:]), nil
 }
 
-//FollowedTask a container for a followed task log process
+// FollowedTask a container for a followed task log process
 type FollowedTask struct {
 	Alloc       *nomadApi.Allocation
 	TaskGroup   string
@@ -65,30 +69,30 @@ type FollowedTask struct {
 	outState    StreamState
 }
 
-//NewFollowedTask creates a new followed task
+// NewFollowedTask creates a new followed task
 func NewFollowedTask(alloc *nomadApi.Allocation, taskGroup string, task *nomadApi.Task, nomad NomadConfig, quit chan struct{}, output chan string, logger Logger) *FollowedTask {
 	logTemplate := createLogTemplate(alloc, task)
 	return &FollowedTask{
-		Alloc: alloc,
-		TaskGroup: taskGroup,
-		Task: task,
-		Nomad: nomad,
-		Quit: quit,
-		OutputChan: output,
-		log: logger,
+		Alloc:       alloc,
+		TaskGroup:   taskGroup,
+		Task:        task,
+		Nomad:       nomad,
+		Quit:        quit,
+		OutputChan:  output,
+		log:         logger,
 		logTemplate: logTemplate,
 	}
 }
 
 type StreamState struct {
-	MultiLineBuf []string
+	MultiLineBuf  []string
 	LastTimestamp string
-	ConsecErrors uint
-	FileOffsets map[string]int64
+	ConsecErrors  uint
+	FileOffsets   map[string]int64
 	// internal use only
 	initialBufferCap int
-	quit chan struct{}
-	allocFS *nomadApi.AllocFS
+	quit             chan struct{}
+	allocFS          *nomadApi.AllocFS
 }
 
 func (s *StreamState) BufAdd(msg string) {
@@ -161,18 +165,19 @@ func CalculateOffset(state StreamState, file string, size int64) int64 {
 	return calculatedOffset
 }
 
-//Start starts following a task for an allocation
+// Start starts following a task for an allocation
 func (ft *FollowedTask) Start(save *SavedTask) {
 	//config := nomadApi.DefaultConfig()
 	//config.WaitTime = 5 * time.Minute
 	//client, err := nomadApi.NewClient(config)
 	//if err != nil {
-		//ft.ErrorChan <- fmt.Sprintf("{ \"message\":\"%s\"}", err)
+	//ft.ErrorChan <- fmt.Sprintf("{ \"message\":\"%s\"}", err)
 	//}
 	//fs := client.AllocFS()
 
 	logContext := "FollowedTask.Start"
 	fs := ft.Nomad.Client().AllocFS()
+
 	ft.outState = NewStreamState(fs, ft.Quit, MULTILINE_BUF_CAP)
 	ft.errState = NewStreamState(fs, ft.Quit, MULTILINE_BUF_CAP)
 	if save != nil {
@@ -256,7 +261,6 @@ func (ft *FollowedTask) Start(save *SavedTask) {
 					ft.outState.ConsecErrors += 1
 				}
 
-
 			case errErr := <-stdErrErr:
 				ft.log.Debugf(
 					logContext,
@@ -324,7 +328,7 @@ func createLogTemplate(alloc *nomadApi.Allocation, task *nomadApi.Task) NomadLog
 	return tmpl
 }
 
-func getServiceTagMap(service nomadApi.Service) (map[string]string) {
+func getServiceTagMap(service nomadApi.Service) map[string]string {
 	var serviceTagMap = make(map[string]string)
 
 	for _, t := range service.Tags {
@@ -341,33 +345,49 @@ func getServiceTagMap(service nomadApi.Service) (map[string]string) {
 // processFrame takes a frame and determines if each line is JSON, or a single or multi-line log.
 //
 // Requirements of operation:
-// - JSON logs must be on a single line to be properly parsed aka newlines escaped if included
-// - String logs must contain a datetime as close to the beginning of the line as possible
-// - Multi-line string logs should not contain datetimes near the beginning of the string
-//   to be grouped properly
+//   - JSON logs must be on a single line to be properly parsed aka newlines escaped if included
+//   - String logs must contain a datetime as close to the beginning of the line as possible
+//   - Multi-line string logs should not contain datetimes near the beginning of the string
+//     to be grouped properly
 //
 // Pseudo code for multi-line string logs:
 // if has a timestamp
-//   if multiline buf is empty
-//     add to multiline buf + continue
-//   else
-//     flush multiline buf as json
-//     add to multiline buf + continue
+//
+//	if multiline buf is empty
+//	  add to multiline buf + continue
+//	else
+//	  flush multiline buf as json
+//	  add to multiline buf + continue
+//
 // else
-//   if multiline buf is empty
-//     add frag header + line to multiline buf + continue
-//   else
-//     add line to multiline buf + continue
+//
+//	if multiline buf is empty
+//	  add frag header + line to multiline buf + continue
+//	else
+//	  add line to multiline buf + continue
+//
 // Note: last timestamp and multiline buffer must be passed to and received from the calling
-//       function to properly mark timestamps and group logs between calls.
+//
+//	function to properly mark timestamps and group logs between calls.
 func (ft *FollowedTask) processFrame(frame *nomadApi.StreamFrame, streamState StreamState) ([]string, StreamState) {
 	logContext := "FollowedTask.processFrame"
 	messages := strings.Split(string(frame.Data[:]), "\n")
 	jsons := make([]string, 0, INITIAL_OUTPUT_CAP)
+
 	for _, message := range messages {
+		var timestamp string
 		if message == "" || message == "\n" {
 			continue
 		}
+
+		// trim down log messages from containers, so we're only logging the container's actual log output
+		// some apps log in NDJSON already, so extracting the JSON object lets us reuse it below
+		matches := CONTAINER_LOGLINE_REGEXP.FindStringSubmatch(message)
+		if len(matches) > 0 {
+			message = matches[3]
+			timestamp = matches[1]
+		}
+
 		if isJSON(message) {
 			ft.log.Tracef(
 				logContext,
@@ -388,7 +408,10 @@ func (ft *FollowedTask) processFrame(frame *nomadApi.StreamFrame, streamState St
 				jsons = append(jsons, s)
 			}
 		} else {
-			timestamp := findTimestamp(message)
+			if timestamp == "" {
+				timestamp = findTimestamp(message)
+			}
+
 			if timestamp != "" {
 				ft.log.Tracef(
 					logContext,
