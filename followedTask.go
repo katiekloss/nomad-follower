@@ -29,6 +29,8 @@ var BACKOFF_DELAY = 8
 // log format that consists of a full ISO8601 timestamp, the pipe name, the letter F (?!), and then the line's contents
 var CONTAINER_LOGLINE_REGEXP = regexp.MustCompile(`(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:(?:[+-]\d\d:\d\d)|Z)?) (stdout|stderr) F (.*)`)
 
+var JSON_MESSAGE_FIELDS = []string{"message", "event"}
+
 // NomadLog annotates task log data with metadata from Nomad about the task
 // and allocation.  A timestamp is parsed out of the message body and string log
 // ouput is preserved under the 'message' field and JSON log output is nested
@@ -498,17 +500,24 @@ func wrapJsonLog(logTmpl NomadLog, line string) NomadLog {
 	logTmpl.Data = data
 	logTmpl.Timestamp = timestamp
 
-	if messageValue, ok := data["message"]; ok {
-		if message, ok := messageValue.(string); ok {
-			logTmpl.Message = message
-		} else {
-			logTmpl.Message = "placeholder"
-		}
-	} else {
+	logTmpl.Message = getMessageFromJsonObject(data)
+	if logTmpl.Message == "" {
 		logTmpl.Message = "placeholder"
 	}
 
 	return logTmpl
+}
+
+func getMessageFromJsonObject(logObj map[string]any) string {
+	for _, name := range JSON_MESSAGE_FIELDS {
+		if value, ok := logObj[name]; ok {
+			if raw, ok := value.(string); ok {
+				return raw
+			}
+		}
+	}
+
+	return ""
 }
 
 func createJsonLog(logTmpl NomadLog, lines []string, timestamp string) NomadLog {
