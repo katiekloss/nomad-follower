@@ -497,6 +497,17 @@ func wrapJsonLog(logTmpl NomadLog, line string) NomadLog {
 	timestamp := findJsonTimestamp(data)
 	logTmpl.Data = data
 	logTmpl.Timestamp = timestamp
+
+	if messageValue, ok := data["message"]; ok {
+		if message, ok := messageValue.(string); ok {
+			logTmpl.Message = message
+		} else {
+			logTmpl.Message = "placeholder"
+		}
+	} else {
+		logTmpl.Message = "placeholder"
+	}
+
 	return logTmpl
 }
 
